@@ -8,9 +8,9 @@ exports.getorders = async (req, res) => {
         let orders = await db.depositpayments.findAll({
             where: {
                 isCardRegistration: true,
-                status: "paid"
+                status: "paid",
             },
-            include: [db.user, db.cards]
+            include: [db.user, db.cards],
         });
 
         return res.status(200).send(orders);
@@ -24,9 +24,9 @@ exports.getdeposits = async (req, res) => {
         let deposits = await db.depositpayments.findAll({
             where: {
                 isCardRegistration: false,
-                status: "paid"
+                status: "paid",
             },
-            include: [db.user, db.cards]
+            include: [db.user, db.cards],
         });
 
         return res.status(200).send(deposits);
@@ -38,22 +38,36 @@ exports.getdeposits = async (req, res) => {
 exports.approveorder = async (req, res) => {
     let order = req.body;
 
+    const name = order.user.fullName.split(" ");
+
     try {
         var hasValidPromo = false;
 
+        console.log("Admin approve Request for: ");
+
+        console.log({
+            amount: order.initialDepositInUsd,
+            currency: "USD",
+            first_name: name[0],
+            last_name: name.length > 1 ? name.slice(1).join(" ") : "",
+            account_id: "9294f014-67a3-445c-928d-ccdfbf83b43b",
+            email: order.user.email,
+        });
+
         var response = await axios.api.post("/virtual_cards/create", {
-            "amount": order.initialDepositInUsd,
-            "currency": "USD",
-            "account_id": "9294f014-67a3-445c-928d-ccdfbf83b43b",
-            "billing_name": order.card.nameOnCard,
-            "user_email": order.user.email
+            amount: order.initialDepositInUsd,
+            currency: "USD",
+            first_name: name[0],
+            last_name: name.length > 1 ? name.slice(1).join(" ") : "",
+            account_id: "9294f014-67a3-445c-928d-ccdfbf83b43b",
+            email: order.user.email,
         });
 
         await db.cards.update(
             {
                 status: "issued",
                 card_solypay_id: response.data.data.id,
-                card_solypay_hash: response.data.data.card_hash
+                card_solypay_hash: response.data.data.card_hash,
             },
             { where: { id: order.card.id } }
         );
@@ -67,13 +81,20 @@ exports.approveorder = async (req, res) => {
 
         // email.send(order.user.email, "cardaccepted", order.user);
 
-        await hulemail.send(order.user.email, "cardaccepted", order.user.fullName);
+        await hulemail.send(
+            order.user.email,
+            "cardaccepted",
+            order.user.fullName
+        );
         // await hulemail.send(order.user.email, "promocodeapplied", order.user.fullName);
 
-        console.log(`Card approved: ${order.user.fullName} (${order.user.email})`);
+        console.log(
+            `Card approved: ${order.user.fullName} (${order.user.email})`
+        );
 
         return res.status(200).send({ message: "Card approved" });
     } catch (err) {
+        console.log(err);
         return res.status(500).send({ message: err.message });
     }
 };
@@ -108,17 +129,20 @@ exports.approvedeposit = async (req, res) => {
     let deposit = req.body;
 
     try {
-        await axios.api.post(`/virtual_cards/fund/${deposit.card.card_solypay_id}`, {
-            "amount": Number(deposit.initialDepositInUsd),
-            "currency": "USD"
-        });
+        await axios.api.post(
+            `/virtual_cards/fund/${deposit.card.card_solypay_id}`,
+            {
+                amount: Number(deposit.initialDepositInUsd),
+                currency: "USD",
+            }
+        );
 
         await db.depositpayments.update(
             {
-                status: "verified"
+                status: "verified",
             },
             { where: { id: deposit.id } }
-        )
+        );
 
         const user = await db.user.findByPk(req.body.userId);
 
@@ -126,7 +150,9 @@ exports.approvedeposit = async (req, res) => {
 
         await hulemail.send(user.email, "depositaccepted", user.fullName);
 
-        console.log(`Deposit approved: ${order.user.fullName} (${order.user.email})`);
+        console.log(
+            `Deposit approved: ${order.user.fullName} (${order.user.email})`
+        );
 
         return res.status(200).send({ message: "Deposit approved" });
     } catch (err) {
